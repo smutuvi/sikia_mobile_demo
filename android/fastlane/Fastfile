@@ -1,6 +1,31 @@
 default_platform :android
 
 platform :android do
+  desc "Build a debug APK and distribute to testers via Firebase App Distribution"
+  lane :distribute do |options|
+    android_dir = File.expand_path('..', Dir.pwd)
+
+    # Write google-services.json from env if not already present (CI support)
+    google_services_path = File.join(android_dir, "app/google-services.json")
+    if ENV["GOOGLE_SERVICES_JSON"] && !File.exist?(google_services_path)
+      File.write(google_services_path, ENV["GOOGLE_SERVICES_JSON"])
+    end
+
+    gradle(
+      project_dir: android_dir,
+      task: "assemble",
+      build_type: "Debug"
+    )
+
+    firebase_app_distribution(
+      app: "1:838166545809:android:741fdc03e41c9a61190630",
+      testers: options[:testers] || ENV["FIREBASE_TESTERS"],
+      release_notes: options[:notes] || "Internal build — #{Time.now.strftime('%Y-%m-%d')}",
+      firebase_cli_token: ENV["FIREBASE_TOKEN"],
+      apk_path: File.join(android_dir, "app/build/outputs/apk/debug/app-debug.apk")
+    )
+  end
+
   desc "Release Android app to Alpha track"
   lane :release_android_alpha do
     android_dir = File.expand_path('..', Dir.pwd)

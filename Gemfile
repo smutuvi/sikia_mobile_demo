@@ -20,3 +20,4 @@ gem 'mutex_m'
 gem "fastlane"
 gem "fastlane-plugin-versioning"
 gem 'fastlane-plugin-versioning_android'
+gem 'fastlane-plugin-firebase_app_distribution'
