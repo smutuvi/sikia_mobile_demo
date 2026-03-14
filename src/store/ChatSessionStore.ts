@@ -1,0 +1,994 @@
+import {makeAutoObservable, runInAction} from 'mobx';
+import {format, isToday, isYesterday} from 'date-fns';
+import * as RNFS from '@dr.pogodin/react-native-fs';
+
+import {MessageType} from '../utils/types';
+import {CompletionParams} from '../utils/completionTypes';
+import {chatSessionRepository} from '../repositories/ChatSessionRepository';
+import {defaultCompletionParams} from '../utils/completionSettingsVersions';
+import {palStore} from './PalStore';
+
+const NEW_SESSION_TITLE = 'New Session';
+const TITLE_LIMIT = 40;
+
+// Minimum time between streaming UI updates to prevent excessive re-renders
+// Set to 150ms to stay well above the 50ms threshold that triggers React warnings
+const STREAMING_THROTTLE_MS = 150;
+
+export interface SessionMetaData {
+  id: string;
+  title: string;
+  date: string;
+  messages: MessageType.Any[];
+  completionSettings: CompletionParams;
+  activePalId?: string;
+  settingsSource: 'pal' | 'custom'; // Explicit choice: use pal settings or custom settings
+  messagesLoaded?: boolean; // Track if messages are loaded for lazy loading
+}
+
+interface SessionGroup {
+  [key: string]: SessionMetaData[];
+}
+
+// Default group names in English as fallback
+const DEFAULT_GROUP_NAMES = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  thisWeek: 'This week',
+  lastWeek: 'Last week',
+  twoWeeksAgo: '2 weeks ago',
+  threeWeeksAgo: '3 weeks ago',
+  fourWeeksAgo: '4 weeks ago',
+  lastMonth: 'Last month',
+  older: 'Older',
+};
+
+export const defaultCompletionSettings = {...defaultCompletionParams};
+delete defaultCompletionSettings.prompt;
+delete defaultCompletionSettings.stop;
+
+class ChatSessionStore {
+  sessions: SessionMetaData[] = [];
+  activeSessionId: string | null = null;
+  isEditMode: boolean = false;
+  editingMessageId: string | null = null;
+  isGenerating: boolean = false;
+  newChatCompletionSettings: CompletionParams = defaultCompletionSettings;
+  newChatPalId: string | undefined = undefined;
+  newChatSettingsSource: 'pal' | 'custom' = 'pal';
+  // Store localized date group names
+  dateGroupNames: typeof DEFAULT_GROUP_NAMES = DEFAULT_GROUP_NAMES;
+  // Migration status
+  isMigrating: boolean = false;
+  migrationComplete: boolean = false;
+  // Selection mode state
+  isSelectionMode: boolean = false;
+  selectedSessionIds: Set<string> = new Set();
+
+  constructor() {
+    makeAutoObservable(this);
+    this.initialize();
+  }
+
+  async initialize() {
+    try {
+      // First check if migration is needed without setting isMigrating flag
+      // This is a quick check that just looks for the flag file
+      const migrationNeeded = await this.isMigrationNeeded();
+
+      if (migrationNeeded) {
+        // Only set isMigrating to true if migration is actually needed
+        runInAction(() => {
+          this.isMigrating = true;
+        });
+
+        // Perform the actual migration
+        await chatSessionRepository.checkAndMigrateFromJSON();
+
+        runInAction(() => {
+          this.isMigrating = false;
+          this.migrationComplete = true;
+        });
+      } else {
+        // Migration not needed, just mark as complete
+        runInAction(() => {
+          this.migrationComplete = true;
+        });
+      }
+
+      // Load data from database (whether migration happened or not)
+      await this.loadSessionList();
+      await this.loadGlobalSettings();
+    } catch (error) {
+      console.error('Failed to initialize ChatSessionStore:', error);
+      runInAction(() => {
+        this.isMigrating = false;
+        this.migrationComplete = false;
+      });
+    }
+  }
+
+  // Helper method to check if migration is needed without setting isMigrating flag
+  private async isMigrationNeeded(): Promise<boolean> {
+    try {
+      // Check if migration flag file exists
+      const migrationFlagPath = `${RNFS.DocumentDirectoryPath}/db-migration-complete.flag`;
+      const migrationComplete = await RNFS.exists(migrationFlagPath);
+
+      return !migrationComplete;
+    } catch (error) {
+      console.error('Error checking migration status:', error);
+      return false; // Assume no migration needed if we can't check
+    }
+  }
+
+  // Method to set localized date group names from React components
+  setDateGroupNames(l10nDateGroups: typeof DEFAULT_GROUP_NAMES) {
+    this.dateGroupNames = l10nDateGroups;
+  }
+
+  get shouldShowHeaderDivider(): boolean {
+    return (
+      !this.activeSessionId ||
+      (this.currentSessionMessages.length === 0 &&
+        !this.isGenerating &&
+        !this.isEditMode)
+    );
+  }
+
+  setIsGenerating(value: boolean) {
+    this.isGenerating = value;
+  }
+
+  async loadSessionList(): Promise<void> {
+    try {
+      const sessions = await chatSessionRepository.getAllSessions();
+
+      // Convert to SessionMetaData format
+      const sessionMetadata: SessionMetaData[] = [];
+
+      for (const session of sessions) {
+        // Use metadata-only method instead of full getSessionById
+        const sessionData =
+          await chatSessionRepository.getSessionMetadataWithSettings(
+            session.id,
+          );
+        if (!sessionData) {
+          continue;
+        }
+
+        // DON'T load messages - leave array empty
+        const messages: MessageType.Any[] = [];
+
+        // Handle case where completionSettings might be null
+        let completionSettings = defaultCompletionSettings;
+        if (sessionData.completionSettings) {
+          completionSettings = sessionData.completionSettings.getSettings();
+        } else {
+          console.warn(
+            `No completion settings found for session ${session.id}, using defaults`,
+          );
+        }
+
+        sessionMetadata.push({
+          id: session.id,
+          title: session.title,
+          date: session.date,
+          messages,
+          completionSettings,
+          activePalId: session.activePalId,
+          settingsSource: 'pal', // Default to pal settings for existing sessions
+          messagesLoaded: false, // Mark as not loaded for lazy loading
+        });
+      }
+
+      runInAction(() => {
+        this.sessions = sessionMetadata;
+      });
+    } catch (error) {
+      console.error('Failed to load session list:', error);
+    }
+  }
+
+  async loadGlobalSettings(): Promise<void> {
+    try {
+      const settings =
+        await chatSessionRepository.getGlobalCompletionSettings();
+
+      runInAction(() => {
+        this.newChatCompletionSettings = settings;
+      });
+    } catch (error) {
+      console.error('Failed to load global settings:', error);
+    }
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    try {
+      await chatSessionRepository.deleteSession(id);
+
+      if (id === this.activeSessionId) {
+        this.resetActiveSession();
+      }
+
+      runInAction(() => {
+        this.sessions = this.sessions.filter(session => session.id !== id);
+      });
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+    }
+  }
+
+  async duplicateSession(id: string) {
+    const session = this.sessions.find(s => s.id === id);
+    if (session) {
+      await this.createNewSession(
+        `${session.title} - Copy`,
+        session.messages,
+        session.completionSettings,
+      );
+    }
+  }
+
+  resetActiveSession() {
+    runInAction(() => {
+      this.newChatPalId = this.activePalId;
+      this.newChatSettingsSource = 'pal'; // Reset to default for new chat
+      // Do not copy completion settings from session to global settings
+      // Instead, preserve global settings as they are
+      this.exitEditMode();
+      this.activeSessionId = null;
+    });
+  }
+
+  // Helper method to load messages for a session
+  private async loadSessionMessages(sessionId: string): Promise<void> {
+    try {
+      const sessionData = await chatSessionRepository.getSessionById(sessionId);
+      if (!sessionData) {
+        console.warn(`Session ${sessionId} not found when loading messages`);
+        return;
+      }
+
+      const session = this.sessions.find(s => s.id === sessionId);
+      if (!session) {
+        return;
+      }
+
+      const messages = sessionData.messages.map(msg => msg.toMessageObject());
+
+      runInAction(() => {
+        session.messages = messages;
+        session.messagesLoaded = true;
+      });
+    } catch (error) {
+      console.error(`Failed to load messages for session ${sessionId}:`, error);
+    }
+  }
+
+  async setActiveSession(sessionId: string): Promise<void> {
+    const session = this.sessions.find(s => s.id === sessionId);
+
+    // Lazy-load messages if not already loaded
+    if (session && !session.messagesLoaded) {
+      await this.loadSessionMessages(sessionId);
+    }
+
+    runInAction(() => {
+      this.exitEditMode();
+      this.activeSessionId = sessionId;
+      // Don't modify global settings when changing sessions
+      this.newChatPalId = undefined;
+      this.newChatSettingsSource = 'pal'; // Reset for consistency
+    });
+  }
+
+  // Update session title by session ID
+  async updateSessionTitleBySessionId(
+    sessionId: string,
+    newTitle: string,
+  ): Promise<void> {
+    try {
+      await chatSessionRepository.updateSessionTitle(sessionId, newTitle);
+
+      const session = this.sessions.find(s => s.id === sessionId);
+      if (session) {
+        runInAction(() => {
+          session.title = newTitle;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to update session title:', error);
+    }
+  }
+
+  async updateSessionTitle(session: SessionMetaData) {
+    if (session.messages.length > 0) {
+      const message = session.messages[session.messages.length - 1];
+      if (session.title === NEW_SESSION_TITLE && message.type === 'text') {
+        runInAction(() => {
+          session.title =
+            message.text.length > TITLE_LIMIT
+              ? `${message.text.substring(0, TITLE_LIMIT)}...`
+              : message.text;
+        });
+
+        // Update in database - await the async call
+        await chatSessionRepository.updateSessionTitle(
+          session.id,
+          session.title,
+        );
+      }
+    }
+  }
+
+  async addMessageToCurrentSession(message: MessageType.Any): Promise<void> {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        // Add to database
+        const newMessage = await chatSessionRepository.addMessageToSession(
+          this.activeSessionId,
+          message,
+        );
+        message.id = newMessage.id;
+
+        // Update local state
+        await this.updateSessionTitle(session);
+        runInAction(() => {
+          session.messages.unshift(message);
+        });
+      }
+    } else {
+      // Always use the global settings for new sessions
+      const settings = {...this.newChatCompletionSettings};
+      await this.createNewSession(NEW_SESSION_TITLE, [message], settings);
+    }
+  }
+
+  get currentSessionMessages(): MessageType.Any[] {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        if (this.isEditMode && this.editingMessageId) {
+          const messageIndex = session.messages.findIndex(
+            msg => msg.id === this.editingMessageId,
+          );
+          if (messageIndex >= 0) {
+            return session.messages.slice(messageIndex + 1);
+          }
+        }
+        return session.messages;
+      }
+    }
+    return [];
+  }
+
+  async setNewChatCompletionSettings(settings: CompletionParams) {
+    this.newChatCompletionSettings = settings;
+    await chatSessionRepository.saveGlobalCompletionSettings(settings);
+  }
+
+  async resetNewChatCompletionSettings() {
+    this.newChatCompletionSettings = {...defaultCompletionSettings};
+    await chatSessionRepository.saveGlobalCompletionSettings(
+      this.newChatCompletionSettings,
+    );
+  }
+
+  async createNewSession(
+    title: string,
+    initialMessages: MessageType.Any[] = [],
+    completionSettings: CompletionParams = defaultCompletionSettings,
+  ): Promise<void> {
+    try {
+      // Create in database
+      const newSession = await chatSessionRepository.createSession(
+        title,
+        initialMessages,
+        completionSettings,
+        this.newChatPalId,
+      );
+
+      // Get the full session data
+      const sessionData = await chatSessionRepository.getSessionById(
+        newSession.id,
+      );
+      if (!sessionData) {
+        return;
+      }
+
+      const messages = sessionData.messages.map(msg => msg.toMessageObject());
+
+      // Handle case where completionSettings might be null
+      let settings = completionSettings; // Use the settings passed to createNewSession as fallback
+      if (sessionData.completionSettings) {
+        settings = sessionData.completionSettings.getSettings();
+      } else {
+        console.warn(
+          `No completion settings found for new session ${newSession.id}, using provided settings`,
+        );
+      }
+
+      // Create metadata object
+      const metaData: SessionMetaData = {
+        id: newSession.id,
+        title,
+        date: newSession.date,
+        messages,
+        completionSettings: settings,
+        settingsSource: this.newChatSettingsSource, // Use the stored settings source choice
+        messagesLoaded: true, // Mark as loaded since we have the messages
+      };
+
+      if (this.newChatPalId) {
+        metaData.activePalId = this.newChatPalId;
+        this.newChatPalId = undefined;
+      }
+
+      await this.updateSessionTitle(metaData);
+
+      runInAction(() => {
+        this.sessions.push(metaData);
+        this.activeSessionId = newSession.id;
+      });
+    } catch (error) {
+      console.error('Failed to create new session:', error);
+    }
+  }
+
+  private streamingThrottleTimer: NodeJS.Timeout | null = null;
+  private pendingStreamingUpdate: {
+    id: string;
+    sessionId: string;
+    update: Partial<MessageType.Text>;
+  } | null = null;
+  private lastStreamingUpdateTime: number = 0;
+
+  // Update message during streaming - no database write, triggers reactivity
+  // Throttled to avoid excessive re-renders
+  updateMessageStreaming(
+    id: string,
+    sessionId: string,
+    update: Partial<MessageType.Text>,
+  ): void {
+    // Store the latest update
+    this.pendingStreamingUpdate = {id, sessionId, update};
+
+    // If timer is already running, the update will be applied when it fires
+    if (this.streamingThrottleTimer) {
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastUpdate = now - this.lastStreamingUpdateTime;
+
+    // If enough time has passed, apply immediately
+    if (timeSinceLastUpdate >= STREAMING_THROTTLE_MS) {
+      this.applyStreamingUpdate();
+      this.lastStreamingUpdateTime = Date.now();
+      return;
+    }
+
+    // Otherwise, schedule for later (wait for the remaining time)
+    const remainingTime = STREAMING_THROTTLE_MS - timeSinceLastUpdate;
+    this.streamingThrottleTimer = setTimeout(() => {
+      this.streamingThrottleTimer = null;
+      if (this.pendingStreamingUpdate) {
+        this.applyStreamingUpdate();
+        this.lastStreamingUpdateTime = Date.now();
+      }
+    }, remainingTime);
+  }
+
+  private applyStreamingUpdate(): void {
+    if (!this.pendingStreamingUpdate) {
+      return;
+    }
+
+    const {id, sessionId, update} = this.pendingStreamingUpdate;
+    this.pendingStreamingUpdate = null;
+
+    const targetSessionId = sessionId || this.activeSessionId;
+    if (!targetSessionId) {
+      return;
+    }
+
+    const session = this.sessions.find(s => s.id === targetSessionId);
+    if (!session) {
+      return;
+    }
+
+    const message = session.messages.find(msg => msg.id === id);
+    if (!message || message.type !== 'text') {
+      return;
+    }
+
+    // Update the message properties directly - MobX will track changes
+    runInAction(() => {
+      if (update.text !== undefined) {
+        (message as MessageType.Text).text = update.text;
+      }
+      if (update.metadata !== undefined) {
+        (message as MessageType.Text).metadata = {
+          ...(message as MessageType.Text).metadata,
+          ...update.metadata,
+        };
+      }
+    });
+
+    // Also persist to database for crash resilience
+    // This is async but we don't await to keep streaming fast
+    chatSessionRepository
+      .updateMessage(id, update)
+      .catch(error =>
+        console.error('Failed to persist streaming update to DB:', error),
+      );
+  }
+
+  async updateMessage(
+    id: string,
+    sessionId: string,
+    update: Partial<MessageType.Text>,
+  ): Promise<void> {
+    try {
+      // Update in database
+      await chatSessionRepository.updateMessage(id, update);
+
+      // Determine which session to update
+      const targetSessionId = sessionId || this.activeSessionId;
+      if (targetSessionId) {
+        const session = this.sessions.find(s => s.id === targetSessionId);
+        if (session) {
+          const index = session.messages.findIndex(msg => msg.id === id);
+          if (index >= 0 && session.messages[index].type === 'text') {
+            // Update local state - only update the specific message
+            runInAction(() => {
+              const existingMessage = session.messages[
+                index
+              ] as MessageType.Text;
+              const mergedUpdate = {...update};
+
+              // Merge metadata instead of replacing, to preserve existing fields
+              // (e.g., partialCompletionResult from streaming)
+              if (update.metadata !== undefined && existingMessage.metadata) {
+                mergedUpdate.metadata = {
+                  ...existingMessage.metadata,
+                  ...update.metadata,
+                };
+              }
+
+              session.messages[index] = {
+                ...existingMessage,
+                ...mergedUpdate,
+              } as MessageType.Text;
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update message:', error);
+    }
+  }
+
+  async updateSessionCompletionSettings(settings: CompletionParams) {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        try {
+          // Update in database
+          await chatSessionRepository.updateSessionCompletionSettings(
+            this.activeSessionId,
+            settings,
+          );
+
+          // Update local state directly - no need to reload from database
+          runInAction(() => {
+            session.completionSettings = settings;
+            session.settingsSource = 'custom'; // Mark as using custom settings
+          });
+        } catch (error) {
+          console.error('Failed to update session completion settings:', error);
+        }
+      }
+    }
+  }
+
+  async updateSessionSettingsSource(source: 'pal' | 'custom') {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        runInAction(() => {
+          session.settingsSource = source;
+        });
+      }
+    }
+  }
+
+  setNewChatSettingsSource(source: 'pal' | 'custom') {
+    runInAction(() => {
+      this.newChatSettingsSource = source;
+    });
+  }
+
+  // Called when the active pal changes in a session
+  async updateSessionActivePal(palId: string) {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        runInAction(() => {
+          session.activePalId = palId;
+          session.settingsSource = 'pal'; // Switch to pal settings when changing pal
+        });
+      }
+    }
+  }
+
+  // Apply current session settings to global settings
+  async applySessionSettingsToGlobal() {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        await this.setNewChatCompletionSettings({
+          ...session.completionSettings,
+        });
+      }
+    }
+  }
+
+  // Reset current session settings to match global settings
+  async resetSessionSettingsToGlobal() {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        await this.updateSessionCompletionSettings({
+          ...this.newChatCompletionSettings,
+        });
+      }
+    }
+  }
+
+  get groupedSessions(): SessionGroup {
+    const groups: SessionGroup = this.sessions.reduce(
+      (acc: SessionGroup, session) => {
+        const date = new Date(session.date);
+        let dateKey: string = format(date, 'MMMM dd, yyyy');
+        const today = new Date();
+        const daysAgo = Math.ceil(
+          (today.getTime() - date.getTime()) / (1000 * 3600 * 24),
+        );
+
+        if (isToday(date)) {
+          dateKey = this.dateGroupNames.today;
+        } else if (isYesterday(date)) {
+          dateKey = this.dateGroupNames.yesterday;
+        } else if (daysAgo <= 6) {
+          dateKey = this.dateGroupNames.thisWeek;
+        } else if (daysAgo <= 13) {
+          dateKey = this.dateGroupNames.lastWeek;
+        } else if (daysAgo <= 20) {
+          dateKey = this.dateGroupNames.twoWeeksAgo;
+        } else if (daysAgo <= 27) {
+          dateKey = this.dateGroupNames.threeWeeksAgo;
+        } else if (daysAgo <= 34) {
+          dateKey = this.dateGroupNames.fourWeeksAgo;
+        } else if (daysAgo <= 60) {
+          dateKey = this.dateGroupNames.lastMonth;
+        } else {
+          dateKey = this.dateGroupNames.older;
+        }
+
+        if (!acc[dateKey]) {
+          acc[dateKey] = [];
+        }
+        acc[dateKey].push(session);
+        return acc;
+      },
+      {},
+    );
+
+    // Define the order of keys using the localized group names
+    const orderedKeys = [
+      this.dateGroupNames.today,
+      this.dateGroupNames.yesterday,
+      this.dateGroupNames.thisWeek,
+      this.dateGroupNames.lastWeek,
+      this.dateGroupNames.twoWeeksAgo,
+      this.dateGroupNames.threeWeeksAgo,
+      this.dateGroupNames.fourWeeksAgo,
+      this.dateGroupNames.lastMonth,
+      this.dateGroupNames.older,
+    ];
+
+    // Create a new object with keys in the desired order
+    const orderedGroups: SessionGroup = {};
+    orderedKeys.forEach(key => {
+      if (groups[key]) {
+        orderedGroups[key] = groups[key].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        );
+      }
+    });
+
+    // Add any remaining keys that weren't in our predefined list
+    Object.keys(groups).forEach(key => {
+      if (!orderedGroups[key]) {
+        orderedGroups[key] = groups[key].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        );
+      }
+    });
+
+    return orderedGroups;
+  }
+
+  /**
+   * Enters edit mode for a specific message
+   */
+  enterEditMode(messageId: string): void {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        const messageIndex = session.messages.findIndex(
+          msg => msg.id === messageId,
+        );
+        if (messageIndex >= 0) {
+          runInAction(() => {
+            this.isEditMode = true;
+            this.editingMessageId = messageId;
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Exits edit mode without making changes
+   */
+  exitEditMode(): void {
+    runInAction(() => {
+      this.isEditMode = false;
+      this.editingMessageId = null;
+    });
+  }
+
+  /**
+   * Commits the edit by actually removing messages after the edited message
+   */
+  async commitEdit(): Promise<void> {
+    if (this.editingMessageId) {
+      // Remove messages after the edited message including the edited message as well.
+      await this.removeMessagesFromId(this.editingMessageId, true);
+      runInAction(() => {
+        this.isEditMode = false;
+        this.editingMessageId = null;
+      });
+    }
+  }
+
+  /**
+   * Removes messages from the current active session starting from a specific message ID.
+   * If includeMessage is true, the message with the given ID is also removed.
+   *
+   * @param messageId - The ID of the message to start removal from.
+   * @param includeMessage - Whether to include the message with the given ID in the removal.
+   */
+  async removeMessagesFromId(
+    messageId: string,
+    includeMessage: boolean = true,
+  ): Promise<void> {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        const messageIndex = session.messages.findIndex(
+          msg => msg.id === messageId,
+        );
+        if (messageIndex >= 0) {
+          // Get messages to remove
+          const endIndex = includeMessage ? messageIndex + 1 : messageIndex;
+          // Slice from the start to the end index, since messages are in reverse order, ie 0 is the latest.
+          const messagesToRemove = session.messages.slice(0, endIndex);
+
+          // Remove from database
+          for (const msg of messagesToRemove) {
+            await chatSessionRepository.deleteMessage(msg.id);
+          }
+
+          const updatedSession = await chatSessionRepository.getSessionById(
+            this.activeSessionId,
+          );
+
+          // Update local state
+          runInAction(() => {
+            session.messages =
+              updatedSession?.messages?.map(msg => msg.toMessageObject()) || [];
+          });
+        }
+      }
+    }
+  }
+
+  get activePalId(): string | undefined {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      return session?.activePalId;
+    }
+    return this.newChatPalId;
+  }
+
+  // Selection mode computed properties
+  get selectedCount(): number {
+    return this.selectedSessionIds.size;
+  }
+
+  get allSelected(): boolean {
+    return (
+      this.sessions.length > 0 &&
+      this.selectedSessionIds.size === this.sessions.length
+    );
+  }
+
+  // Selection mode actions
+  enterSelectionMode(sessionId?: string) {
+    runInAction(() => {
+      this.isSelectionMode = true;
+      this.selectedSessionIds.clear();
+      if (sessionId) {
+        this.selectedSessionIds.add(sessionId);
+      }
+    });
+  }
+
+  exitSelectionMode() {
+    runInAction(() => {
+      this.isSelectionMode = false;
+      this.selectedSessionIds.clear();
+    });
+  }
+
+  toggleSessionSelection(sessionId: string) {
+    runInAction(() => {
+      if (this.selectedSessionIds.has(sessionId)) {
+        this.selectedSessionIds.delete(sessionId);
+      } else {
+        this.selectedSessionIds.add(sessionId);
+      }
+    });
+  }
+
+  selectAllSessions() {
+    runInAction(() => {
+      this.sessions.forEach(session => {
+        this.selectedSessionIds.add(session.id);
+      });
+    });
+  }
+
+  deselectAllSessions() {
+    runInAction(() => {
+      this.selectedSessionIds.clear();
+    });
+  }
+
+  async bulkDeleteSessions(): Promise<void> {
+    try {
+      const idsToDelete = Array.from(this.selectedSessionIds);
+
+      // Delete from database
+      await chatSessionRepository.deleteSessions(idsToDelete);
+
+      // Check if active session was deleted
+      const wasActiveSessionDeleted =
+        this.activeSessionId && idsToDelete.includes(this.activeSessionId);
+
+      if (wasActiveSessionDeleted) {
+        this.resetActiveSession();
+      }
+
+      // Update local state and exit selection mode
+      runInAction(() => {
+        this.sessions = this.sessions.filter(
+          session => !idsToDelete.includes(session.id),
+        );
+        this.exitSelectionMode();
+      });
+    } catch (error) {
+      console.error('Failed to bulk delete sessions:', error);
+      throw error;
+    }
+  }
+
+  async bulkExportSessions(): Promise<void> {
+    try {
+      const idsToExport = Array.from(this.selectedSessionIds);
+      await chatSessionRepository.exportSessions(idsToExport);
+
+      runInAction(() => {
+        this.exitSelectionMode();
+      });
+    } catch (error) {
+      console.error('Failed to bulk export sessions:', error);
+      throw error;
+    }
+  }
+
+  async setActivePal(palId: string | undefined): Promise<void> {
+    if (this.activeSessionId) {
+      const session = this.sessions.find(s => s.id === this.activeSessionId);
+      if (session) {
+        // Update in database
+        await chatSessionRepository.setSessionActivePal(
+          this.activeSessionId,
+          palId,
+        );
+
+        // Update local state
+        runInAction(() => {
+          session.activePalId = palId;
+        });
+      }
+    } else {
+      this.newChatPalId = palId;
+    }
+  }
+
+  /**
+   * Resolves completion settings according to the precedence hierarchy:
+   * System Defaults → Global User Settings → Pal-Specific Settings → Session-Specific Settings (only if explicitly modified)
+   */
+  async resolveCompletionSettings(
+    sessionId?: string,
+    palId?: string,
+  ): Promise<CompletionParams> {
+    // Start with system defaults
+    let resolvedSettings: CompletionParams = {...defaultCompletionSettings};
+
+    // Apply global user settings
+    resolvedSettings = {
+      ...resolvedSettings,
+      ...this.newChatCompletionSettings,
+    };
+
+    // Apply pal-specific settings if available
+    if (palId) {
+      // Use in-memory pal store as the source of truth (avoids cache invalidation issues)
+      const pal = palStore.pals.find(p => p.id === palId);
+      const palSettings = pal?.completionSettings;
+
+      if (palSettings) {
+        resolvedSettings = {
+          ...resolvedSettings,
+          ...palSettings,
+        };
+      }
+    }
+
+    // Apply session-specific settings based on explicit user choice
+    if (sessionId) {
+      const session = this.sessions.find(s => s.id === sessionId);
+
+      if (session?.settingsSource === 'custom') {
+        // User explicitly chose custom settings - use session settings
+        resolvedSettings = session.completionSettings;
+      }
+    }
+
+    return resolvedSettings;
+  }
+
+  /**
+   * Gets the effective completion settings for the current context
+   */
+  async getCurrentCompletionSettings(): Promise<CompletionParams> {
+    const activePalId = this.activeSessionId
+      ? this.sessions.find(s => s.id === this.activeSessionId)?.activePalId
+      : this.newChatPalId;
+
+    return this.resolveCompletionSettings(
+      this.activeSessionId || undefined,
+      activePalId,
+    );
+  }
+}
+
+export const chatSessionStore = new ChatSessionStore();

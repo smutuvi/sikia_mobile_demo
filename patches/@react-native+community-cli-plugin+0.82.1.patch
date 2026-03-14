@@ -1,0 +1,15 @@
+diff --git a/node_modules/@react-native/community-cli-plugin/dist/commands/start/runServer.js b/node_modules/@react-native/community-cli-plugin/dist/commands/start/runServer.js
+index 7fb3d6b..081739f 100644
+--- a/node_modules/@react-native/community-cli-plugin/dist/commands/start/runServer.js
++++ b/node_modules/@react-native/community-cli-plugin/dist/commands/start/runServer.js
+@@ -22,6 +22,10 @@ var _metroCore = require("metro-core");
+ var _path = _interopRequireDefault(require("path"));
+ var _url = _interopRequireDefault(require("url"));
+ var _util = require("util");
++// Polyfill for Node < 20.12 where util.styleText does not exist
++if (typeof _util.styleText !== "function") {
++  _util.styleText = (_style, text) => (typeof text === "string" ? text : String(text));
++}
+ function _interopRequireWildcard(e, t) {
+   if ("function" == typeof WeakMap)
+     var r = new WeakMap(),

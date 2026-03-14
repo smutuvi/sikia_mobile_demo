@@ -1,0 +1,41 @@
+{
+  "benchmark_name": "CIMMYT_SLM_ALL_QUESTIONS_v3_en",
+  "language": "en",
+  "notes": "Minimal bundle for Session (sikia_mobile). Copy CIMMYT_ALL_questions_en.json here for full survey.",
+  "questions": [
+    {
+      "question_id": "Q1",
+      "main_question": "What percentage of your harvest do you lose to Fall Armyworm? Please consider the last three cropping seasons.",
+      "target_outcome": "Percentage of harvest",
+      "probe_bank": {
+        "1": "OK",
+        "2": "Confirm whether that number is a percentage of the harvest",
+        "3": "Give brief information about this pest/disease and how it looks",
+        "4": "Can you give the % for a good season and a bad season?",
+        "5": "Convert number-words into actual numbers and compute the percentage",
+        "6": "Can you give an estimate of the % yield loss?"
+      }
+    },
+    {
+      "question_id": "Q4",
+      "main_question": "What would you need from a new maize variety that would replace the one you currently plant? Please give as much detail as possible (e.g., days to maturity, resistance to fall armyworm, drought tolerance at different stages, typical yield).",
+      "target_outcome": "The answer describes crop traits and assesses how much improvement is needed to justify planting a new maize variety.",
+      "probe_bank": {
+        "1": "OK",
+        "2": "Why are these traits important to you?",
+        "3": "What should the new maize variety have or do to make you stop planting your current one and plant the new one?",
+        "4": "If maize had these traits, would you plant it instead of what you currently plant?",
+        "5": "How much better should the new maize be for you to stop planting your current one and plant the new one?"
+      }
+    },
+    {
+      "question_id": "Q6",
+      "main_question": "At which stage of maize growth does drought affect your crop the most? For example, germination, vegetative growth, flowering, grain filling, or maturity/harvest.",
+      "target_outcome": "Understanding of the specific growth stage and the severity/impact observed.",
+      "probe_bank": {
+        "1": "OK",
+        "2": "How does drought at that maize stage affect you as a farmer?"
+      }
+    }
+  ]
+}
