@@ -7,8 +7,8 @@ Sikia is a mobile AI assistant that runs small language models (SLMs) entirely o
 - **Offline AI**: Chat with SLMs locally — no cloud, no tracking.
 - **Model Flexibility**: Download and switch between multiple models (Phi, Gemma, Qwen, Danube, and more).
 - **Hugging Face Integration**: Browse and download GGUF models directly from the HF Hub, including gated models with your access token.
-- **Personalized Pals**: Create AI personas with custom system prompts and settings.
-- **Performance Benchmarking**: Test model speed and memory usage on your device.
+<!-- - **Personalized Pals**: Create AI personas with custom system prompts and settings. -->
+<!-- - **Performance Benchmarking**: Test model speed and memory usage on your device. -->
 - **Auto Memory Management**: Models are offloaded automatically when the app goes to background.
 - **Cross-Platform**: Optimized for phones and tablets on both iOS and Android.
 
