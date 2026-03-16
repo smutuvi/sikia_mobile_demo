@@ -948,7 +948,7 @@ export const SettingsScreen: React.FC = observer(() => {
                       onDismiss={() => setShowLanguageMenu(false)}
                       anchor={languageAnchor}
                       selectable>
-                      {uiStore.supportedLanguages.map(lang => (
+                      {uiStore.visibleLanguages.map(lang => (
                         <Menu.Item
                           key={lang}
                           testID={`language-option-${lang}`}

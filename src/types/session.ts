@@ -117,6 +117,8 @@ export interface SessionContextForFollowUp {
   respondentAnswer: string;
   /** Last N Q&A pairs for context. */
   recentQAPairs: Array<{ questionText: string; answerText: string }>;
+  /** Full English name of the interview language (e.g. 'Swahili'). Used to instruct LLM response language. */
+  languageName?: string;
 }
 
 /** API response for follow-up suggestion. */

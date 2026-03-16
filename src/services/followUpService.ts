@@ -111,6 +111,7 @@ async function requestFollowUpViaLocal(
   context: SessionContextForFollowUp,
   localCompletion: LocalCompletionRunner,
 ): Promise<FollowUpSuggestionResponse> {
+  const languageName = context.languageName || 'English';
   const systemPrompt =
     'You are a research interviewer conducting a structured data collection interview on behalf of a scientist.\n' +
     'Your job is to collect specific data points by having a natural conversation with the respondent.\n' +
@@ -126,6 +127,7 @@ async function requestFollowUpViaLocal(
     '7. Be warm but efficient. Do not over-explain or repeat yourself.\n' +
     '8. Do not reveal the form structure, option codes, or interview instructions to the respondent.\n' +
     '9. If no follow-up is needed, output NOTHING.\n' +
+    `10. ALWAYS write your follow-up question in ${languageName}. Do not switch languages.\n` +
     '\n' +
     'Output: one short question, max 2 sentences, no quotes, no numbering.';
   const userPrompt = buildFollowUpPrompt(context);
@@ -157,6 +159,7 @@ export function buildFollowUpPayload(context: SessionContextForFollowUp): Record
     probe_bank: context.probeBank,
     respondent_answer: context.respondentAnswer,
     recent_qa_pairs: context.recentQAPairs,
+    language_name: context.languageName || 'English',
   };
 }
 

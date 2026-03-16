@@ -22,8 +22,9 @@ function getApiKey(): string | undefined {
 /**
  * Transcribe a WAV file using OpenAI Whisper API (online).
  * Requires OPENAI_API_KEY in .env / react-native-config.
+ * @param language ISO 639-1 code (e.g. 'en', 'fr', 'sw'). Defaults to 'en'.
  */
-export async function transcribeWithWhisperApi(wavPath: string): Promise<string> {
+export async function transcribeWithWhisperApi(wavPath: string, language = 'en'): Promise<string> {
   const apiKey = getApiKey();
   if (!apiKey || apiKey.trim() === '') {
     throw new Error(
@@ -59,7 +60,7 @@ export async function transcribeWithWhisperApi(wavPath: string): Promise<string>
     name: 'recording.wav',
   } as any);
   formData.append('model', 'whisper-1');
-  formData.append('language', 'en');
+  formData.append('language', language || 'en');
 
   if (__DEV__) console.log('[OnlineSTT] Uploading to Whisper API...');
   const response = await fetch(OPENAI_WHISPER_URL, {

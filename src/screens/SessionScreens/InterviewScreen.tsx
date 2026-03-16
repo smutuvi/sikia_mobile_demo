@@ -11,6 +11,7 @@ import {createStyles} from './styles';
 import {useWhisperVoiceInput} from '../../hooks/useWhisperVoiceInput';
 import type {SttMode} from '../../hooks/useWhisperVoiceInput';
 import {sessionStore, modelStore, uiStore, asrModelStore} from '../../store';
+import {languageFullNames} from '../../locales';
 import {formResponseStore} from '../../store/FormResponseStore';
 import {isOnlineSttConfigured} from '../../services/onlineSttService';
 import {warmUpAsrModel, isWhisperLoaded} from '../../services/whisperVoiceService';
@@ -41,6 +42,9 @@ export const InterviewScreen: React.FC = observer(() => {
     if (text) setAnswerText(prev => (prev ? `${prev} ${text}` : text));
   }, []);
 
+  const asrLanguage = uiStore.language;
+  const asrLanguageName = languageFullNames[asrLanguage] ?? 'English';
+
   const {
     isRecording,
     isTranscribing,
@@ -52,6 +56,7 @@ export const InterviewScreen: React.FC = observer(() => {
     onResult: onVoiceResult,
     // Use true offline mode (record then transcribe) for the Offline setting when selected
     mode: uiStore.sttMode as SttMode,
+    language: asrLanguage,
   });
 
   useEffect(() => {
@@ -106,6 +111,7 @@ export const InterviewScreen: React.FC = observer(() => {
       question.probeBank,
       text,
       localCompletion,
+      asrLanguageName,
     );
     if (followUp) {
       setPendingFollowUp(followUp);

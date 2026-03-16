@@ -12,11 +12,14 @@ export type SttMode = 'offline' | 'online' | 'live';
 type UseWhisperVoiceInputOptions = {
   onResult: (text: string) => void;
   mode?: SttMode;
+  /** ISO 639-1 language code for ASR (e.g. 'en', 'fr', 'sw'). Defaults to 'en'. */
+  language?: string;
 };
 
 export function useWhisperVoiceInput({
   onResult,
   mode = 'offline',
+  language = 'en',
 }: UseWhisperVoiceInputOptions) {
   const [isRecording, setIsRecording] = React.useState(false);
   const [isTranscribing, setIsTranscribing] = React.useState(false);
@@ -73,7 +76,7 @@ export function useWhisperVoiceInput({
               clearEmptyResultTimeout();
               setOnlineStep('Transcribing…');
               try {
-                const text = await transcribeWithWhisperApi(path);
+                const text = await transcribeWithWhisperApi(path, language);
                 setOnlineStep('');
                 setIsTranscribing(false);
                 if (text && typeof onResult === 'function') {
@@ -93,9 +96,9 @@ export function useWhisperVoiceInput({
             }
           : undefined,
       },
-      isOnline ? {mode: 'online'} : isLiveOffline ? undefined : {mode: 'offline'},
+      isOnline ? {mode: 'online', language} : isLiveOffline ? undefined : {mode: 'offline', language},
     );
-  }, [onResult, mode]);
+  }, [onResult, mode, language]);
 
   React.useEffect(() => {
     return () => clearEmptyResultTimeout();

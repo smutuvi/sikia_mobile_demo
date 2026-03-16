@@ -205,6 +205,7 @@ class SessionStore {
     targetOutcome: string | undefined,
     probeBank: string[],
     respondentAnswer: string,
+    languageName?: string,
   ): SessionContextForFollowUp {
     const turns = this.getTurnsForQuestion(sessionId, questionId);
     const recentQAPairs = turns
@@ -219,6 +220,7 @@ class SessionStore {
       probeBank,
       respondentAnswer,
       recentQAPairs,
+      languageName: languageName || 'English',
     };
   }
 
@@ -231,6 +233,7 @@ class SessionStore {
     probeBank: string[],
     respondentAnswer: string,
     localCompletion?: LocalCompletionRunner,
+    languageName?: string,
   ): Promise<string | null> {
     runInAction(() => {
       this.isRequestingFollowUp = true;
@@ -243,6 +246,7 @@ class SessionStore {
         targetOutcome,
         probeBank,
         respondentAnswer,
+        languageName,
       );
       const res = await requestFollowUpSuggestion(context, {
         localCompletion,

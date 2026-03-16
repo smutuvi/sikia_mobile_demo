@@ -1,0 +1,68 @@
+{
+  "common": {
+    "cancel": "Ghairi",
+    "delete": "Futa",
+    "dismiss": "Ondoa",
+    "rename": "Badilisha Jina",
+    "reset": "Weka Upya",
+    "save": "Hifadhi",
+    "update": "Sasisha",
+    "error": "Hitilafu",
+    "export": "Hamisha",
+    "networkError": "Hitilafu ya mtandao. Tafadhali jaribu tena.",
+    "downloadETA": "Muda wa Kupakua",
+    "calculating": "inakokotoa...",
+    "second": "sek",
+    "seconds": "sek",
+    "year": "mwaka",
+    "years": "miaka",
+    "month": "mwezi",
+    "months": "miezi",
+    "week": "wiki",
+    "weeks": "wiki",
+    "day": "siku",
+    "days": "siku",
+    "hour": "saa",
+    "hours": "saa",
+    "minute": "dak",
+    "minutes": "dak",
+    "justNow": "sasa hivi",
+    "ok": "Sawa",
+    "close": "Funga",
+    "clear": "Futa Yote",
+    "gallery": "Picha"
+  },
+  "settings": {
+    "language": "Lugha",
+    "appSettings": "Mipangilio ya Programu",
+    "darkMode": "Hali ya Giza",
+    "lightMode": "Hali ya Nuru",
+    "cacheStorageTitle": "Akiba na Hifadhi",
+    "clearPalCaches": "Futa Akiba za Njia",
+    "clearPalCachesDescription": "Inafuta data iliyohifadhiwa kuharakisha Njia.",
+    "clearCachesButton": "Futa Akiba",
+    "clearCachesConfirmTitle": "Futa Akiba za Njia?",
+    "clearCachesConfirmMessage": "Hii itafuta data yote ya akiba ya kikao (faili {{fileCount}}, {{size}}). Njia zinaweza kuwa polepole zaidi baada ya kufuta.",
+    "clearCachesSuccess": "Imefuta kwa mafanikio faili {{count}} za akiba.",
+    "clearCachesError": "Imeshindwa kufuta akiba. Tafadhali jaribu tena.",
+    "noCachesToClear": "Hakuna akiba za kufuta."
+  },
+  "chat": {
+    "modelNotLoaded": "Hakuna mfano uliowashwa. Tafadhali chagua mfano kutoka Mifano.",
+    "send": "Tuma",
+    "copy": "Nakili",
+    "delete": "Futa",
+    "edit": "Hariri"
+  },
+  "models": {
+    "download": "Pakua",
+    "delete": "Futa",
+    "cancel": "Ghairi"
+  },
+  "sessions": {
+    "newSession": "Kikao Kipya",
+    "noSessions": "Hakuna vikao. Anza moja.",
+    "completed": "Imekamilika",
+    "inProgress": "Inaendelea"
+  }
+}

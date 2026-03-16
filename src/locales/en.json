@@ -116,10 +116,10 @@
     "useHfTokenDescription": "Enable to use token for API requests. Disable if token is causing authentication issues.",
     "cacheStorageTitle": "Cache & Storage",
     "clearPalCaches": "Clear Shortcuts Caches",
-    "clearPalCachesDescription": "Clears cached data used to speed up Shortcuts. This won't affect your Pals or chat history.",
+    "clearPalCachesDescription": "Clears cached data used to speed up Shortcuts.",
     "clearCachesButton": "Clear Caches",
     "clearCachesConfirmTitle": "Clear Shortcuts Caches?",
-    "clearCachesConfirmMessage": "This will clear all cached session data ({{fileCount}} files, {{size}}). Shortcuts may be slower on first use after clearing. This won't affect your Pals or chat history.",
+    "clearCachesConfirmMessage": "This will clear all cached session data ({{fileCount}} files, {{size}}). Shortcuts may be slower on first use after clearing.",
     "clearCachesSuccess": "Successfully cleared {{count}} cache file(s).",
     "clearCachesError": "Failed to clear caches. Please try again.",
     "noCachesToClear": "No caches to clear."

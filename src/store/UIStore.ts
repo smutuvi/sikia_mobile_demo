@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   l10n,
   supportedLanguages as localesSupportedLanguages,
+  visibleLanguages as localesVisibleLanguages,
   type AvailableLanguage,
 } from '../locales';
 import {ErrorState} from '../utils/errors';
@@ -34,9 +35,14 @@ export class UIStore {
   // Current selected language (default to English)
   _language: AvailableLanguage = 'en';
 
-  // List of supported languages (derived from locales registry)
+  // Full list of supported languages (all registered locales)
   get supportedLanguages(): readonly AvailableLanguage[] {
     return localesSupportedLanguages;
+  }
+
+  // Languages shown in the Settings picker (English, French, Swahili only)
+  get visibleLanguages(): readonly AvailableLanguage[] {
+    return localesVisibleLanguages;
   }
 
   displayMemUsage = false;

@@ -40,7 +40,8 @@ import {isOnlineSttConfigured} from '../../services/onlineSttService';
 import ImageView from './ImageView';
 import {createStyles} from './styles';
 
-import {chatSessionStore, modelStore, asrModelStore} from '../../store';
+import {chatSessionStore, modelStore, asrModelStore, uiStore} from '../../store';
+import {languageFullNames} from '../../locales';
 
 import {MessageType, User} from '../../utils/types';
 import {Pal} from '../../types/pal';
@@ -242,7 +243,11 @@ export const ChatView = observer(
       start: startVoice,
       stop: stopVoice,
       reset: resetVoice,
-    } = useWhisperVoiceInput({onResult: onVoiceResult, mode: chatSttMode});
+    } = useWhisperVoiceInput({
+      onResult: onVoiceResult,
+      mode: chatSttMode,
+      language: uiStore.language,
+    });
     const [hasVoiceRecordingStarted, setHasVoiceRecordingStarted] =
       React.useState(false);
     React.useEffect(() => {

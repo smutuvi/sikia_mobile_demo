@@ -28,6 +28,8 @@ type VoiceCallbacks = {
 export type VoiceCaptureOptions = {
   mode?: 'offline' | 'online';
   recordingOutputPath?: string;
+  /** ISO 639-1 language code passed to Whisper (e.g. 'en', 'fr', 'sw'). Defaults to 'en'. */
+  language?: string;
 };
 
 const VAD_MODEL_ASSET = require('../assets/models/ggml-silero-v6.2.0.bin');
@@ -58,6 +60,9 @@ let onlineOutputPath: string | null = null;
 let offlineRecordingStream: AudioPcmStreamAdapter | null = null;
 let offlineRecordingWavWriter: WavFileWriter | null = null;
 let offlineRecordingPath: string | null = null;
+
+/** Language code set at startVoiceCapture time; used by stopVoiceCapture for offline transcription. */
+let currentLanguage: string = 'en';
 
 /** RNFS adapter for WavFileWriter (writeFile/appendFile/readFile/exists/unlink with base64). */
 function getRnfsWavAdapter(): import('whisper.rn/src/utils/WavFileWriter').WavFileWriterFs {
@@ -394,6 +399,7 @@ export async function startVoiceCapture(
   options?: VoiceCaptureOptions,
 ) {
   callbacks = cb != null && typeof cb === 'object' ? cb : {};
+  currentLanguage = options?.language?.trim() || 'en';
   if (options?.mode === 'online') {
     const dir = getRecordingDir();
     const baseName = `asr_online_${Date.now()}.wav`;
@@ -640,7 +646,7 @@ export async function stopVoiceCapture() {
         try {
           if (__DEV__) console.log('[ASR] Offline: transcribing recorded WAV', pathToTranscribe);
           const {result} = await transcribeWavFile(pathToTranscribe, {
-            language: 'en',
+            language: currentLanguage,
             quickTest30s: true,
           });
           const text = (result ?? '').trim();

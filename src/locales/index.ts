@@ -10,6 +10,8 @@ import type {Translations} from './types';
 // 3) add case to requireLanguageData(), 4) add getter to l10n object.
 const languageRegistry = {
   en: {displayName: 'English (EN)'},
+  fr: {displayName: 'Français (FR)'},
+  sw: {displayName: 'Swahili (SW)'},
   fa: {displayName: 'فارسی (FA)'},
   he: {displayName: 'עברית (HE)'},
   id: {displayName: 'Indonesia (ID)'},
@@ -25,8 +27,13 @@ export const supportedLanguages = Object.keys(
   languageRegistry,
 ) as AvailableLanguage[];
 
+/** Languages shown in the Settings language picker. All others remain supported for stored preferences but are hidden from the UI. */
+export const visibleLanguages: AvailableLanguage[] = ['en', 'fr', 'sw'];
+
 export const languageDisplayNames: Record<AvailableLanguage, string> = {
   en: languageRegistry.en.displayName,
+  fr: languageRegistry.fr.displayName,
+  sw: languageRegistry.sw.displayName,
   fa: languageRegistry.fa.displayName,
   he: languageRegistry.he.displayName,
   id: languageRegistry.id.displayName,
@@ -37,6 +44,21 @@ export const languageDisplayNames: Record<AvailableLanguage, string> = {
   zh: languageRegistry.zh.displayName,
 };
 
+/** Full English name of each language — used when injecting language instructions into LLM prompts. */
+export const languageFullNames: Record<AvailableLanguage, string> = {
+  en: 'English',
+  fr: 'French',
+  sw: 'Swahili',
+  fa: 'Persian',
+  he: 'Hebrew',
+  id: 'Indonesian',
+  ja: 'Japanese',
+  ko: 'Korean',
+  ms: 'Malay',
+  ru: 'Russian',
+  zh: 'Chinese',
+};
+
 // ─── Lazy Loading ────────────────────────────────────────────────────
 const cache: Partial<Record<AvailableLanguage, Translations>> = {
   en: enData,
@@ -45,6 +67,10 @@ const cache: Partial<Record<AvailableLanguage, Translations>> = {
 // Metro bundles these at build time, but JS doesn't parse them until require() is called
 function requireLanguageData(lang: AvailableLanguage): object | null {
   switch (lang) {
+    case 'fr':
+      return require('./fr.json');
+    case 'sw':
+      return require('./sw.json');
     case 'fa':
       return require('./fa.json');
     case 'he':
@@ -89,6 +115,12 @@ export function _testGetCacheKeys(): string[] {
 export const l10n = {
   get en(): Translations {
     return enData;
+  },
+  get fr(): Translations {
+    return getTranslations('fr');
+  },
+  get sw(): Translations {
+    return getTranslations('sw');
   },
   get fa(): Translations {
     return getTranslations('fa');
@@ -138,6 +170,8 @@ export function t(
 export const initLocale = (locale?: AvailableLanguage) => {
   const locales: Record<AvailableLanguage, unknown> = {
     en: require('dayjs/locale/en'),
+    fr: require('dayjs/locale/fr'),
+    sw: require('dayjs/locale/sw'),
     fa: require('dayjs/locale/fa'),
     he: require('dayjs/locale/he'),
     id: require('dayjs/locale/id'),
