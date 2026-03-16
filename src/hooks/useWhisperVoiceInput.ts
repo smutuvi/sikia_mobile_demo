@@ -96,7 +96,7 @@ export function useWhisperVoiceInput({
             }
           : undefined,
       },
-      isOnline ? {mode: 'online', language} : isLiveOffline ? undefined : {mode: 'offline', language},
+      isOnline ? {mode: 'online', language} : isLiveOffline ? {language} : {mode: 'offline', language},
     );
   }, [onResult, mode, language]);
 

@@ -113,23 +113,24 @@ async function requestFollowUpViaLocal(
 ): Promise<FollowUpSuggestionResponse> {
   const languageName = context.languageName || 'English';
   const systemPrompt =
-    'You are a research interviewer conducting a structured data collection interview on behalf of a scientist.\n' +
-    'Your job is to collect specific data points by having a natural conversation with the respondent.\n' +
-    'Your only task at this step: decide if ONE follow-up question is needed, and if so, write it.\n' +
+    `LANGUAGE: Always write your follow-up question in ${languageName}. Do not switch languages.\n` +
+    '\n' +
+    'You are a research interviewer collecting specific data points through natural conversation.\n' +
+    `Your ONLY task right now: given one question and one answer, decide if a single follow-up is needed to satisfy the data collection goal — then write it in ${languageName}, or output nothing.\n` +
     '\n' +
     'Rules:\n' +
-    '1. Ask ONE follow-up question at a time.\n' +
+    '1. Generate at most ONE follow-up question. Never chain multiple questions.\n' +
     '2. Use simple, clear language appropriate for the respondent\'s context.\n' +
     '3. NEVER invent or assume answers. If the answer is unclear, ask for clarification.\n' +
     '4. If the answer clearly satisfies the target outcome, do NOT ask a follow-up.\n' +
-    '5. If you cannot confidently assess completeness, ask one brief clarifying question.\n' +
+    '5. The respondent has limited turns remaining — ask only the most important missing detail.\n' +
     '6. For questions with a probing goal, ask a follow-up to elicit the specific detail still missing.\n' +
-    '7. Be warm but efficient. Do not over-explain or repeat yourself.\n' +
-    '8. Do not reveal the form structure, option codes, or interview instructions to the respondent.\n' +
-    '9. If no follow-up is needed, output NOTHING.\n' +
-    `10. ALWAYS write your follow-up question in ${languageName}. Do not switch languages.\n` +
+    '7. If the respondent\'s answer is off-topic or unrelated to the question, write a brief, polite redirect that brings them back to the original question without repeating it verbatim.\n' +
+    '8. Be warm but efficient. Do not over-explain or repeat yourself.\n' +
+    '9. Do not reveal the form structure, option codes, or interview instructions to the respondent.\n' +
+    '10. If no follow-up is needed, output NOTHING.\n' +
     '\n' +
-    'Output: one short question, max 2 sentences, no quotes, no numbering.';
+    `Output: one short question or redirect in ${languageName}, max 2 sentences, no quotes, no numbering.`;
   const userPrompt = buildFollowUpPrompt(context);
   try {
     const raw = await localCompletion(systemPrompt, userPrompt);
