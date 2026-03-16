@@ -18,11 +18,66 @@ platform :android do
     )
 
     firebase_app_distribution(
-      app: "1:838166545809:android:741fdc03e41c9a61190630",
+      app: "1:838166545809:android:39f973ac6335daa7190630",
       testers: options[:testers] || ENV["FIREBASE_TESTERS"],
-      release_notes: options[:notes] || "Internal build — #{Time.now.strftime('%Y-%m-%d')}",
+      release_notes: options[:notes] || "Debug build — #{Time.now.strftime('%Y-%m-%d')}",
       firebase_cli_token: ENV["FIREBASE_TOKEN"],
       apk_path: File.join(android_dir, "app/build/outputs/apk/debug/app-debug.apk")
+    )
+  end
+
+  desc "Build a signed Release APK and distribute to testers via Firebase App Distribution"
+  lane :distribute_release do |options|
+    android_dir = File.expand_path('..', Dir.pwd)
+    root_dir    = File.expand_path('../..', Dir.pwd)
+
+    # Load variables from sikia_mobile/.env
+    env_file = File.join(root_dir, ".env")
+    env_vars = {}
+    if File.exist?(env_file)
+      File.readlines(env_file).each do |line|
+        line = line.strip
+        next if line.empty? || line.start_with?('#')
+        key, value = line.split('=', 2)
+        env_vars[key.strip] = value&.strip if key
+      end
+    end
+
+    # Write google-services.json from env if not already present (CI support)
+    google_services_path = File.join(android_dir, "app/google-services.json")
+    google_services_json = env_vars["GOOGLE_SERVICES_JSON"] || ENV["GOOGLE_SERVICES_JSON"]
+    if google_services_json && !File.exist?(google_services_path)
+      File.write(google_services_path, google_services_json)
+    end
+
+    keystore_path  = File.join(android_dir, "app/sikia-release-key.keystore")
+    store_password = env_vars["APP_RELEASE_STORE_PASSWORD"] || ENV["APP_RELEASE_STORE_PASSWORD"]
+    key_password   = env_vars["APP_RELEASE_KEY_PASSWORD"]   || ENV["APP_RELEASE_KEY_PASSWORD"]
+    firebase_token = env_vars["FIREBASE_TOKEN"]             || ENV["FIREBASE_TOKEN"]
+    firebase_testers = env_vars["FIREBASE_TESTERS"]         || ENV["FIREBASE_TESTERS"]
+
+    UI.user_error!("Missing APP_RELEASE_STORE_PASSWORD in .env") if store_password.nil? || store_password.empty?
+    UI.user_error!("Missing APP_RELEASE_KEY_PASSWORD in .env")   if key_password.nil?   || key_password.empty?
+    UI.user_error!("Keystore not found at #{keystore_path}")      unless File.exist?(keystore_path)
+
+    gradle(
+      project_dir: android_dir,
+      task: "assemble",
+      build_type: "Release",
+      properties: {
+        "android.injected.signing.store.file"     => keystore_path,
+        "android.injected.signing.store.password" => store_password,
+        "android.injected.signing.key.alias"      => "sikia_key_alias",
+        "android.injected.signing.key.password"   => key_password
+      }
+    )
+
+    firebase_app_distribution(
+      app: "1:838166545809:android:39f973ac6335daa7190630",
+      testers: options[:testers] || firebase_testers,
+      release_notes: options[:notes] || "Release build — #{Time.now.strftime('%Y-%m-%d')}",
+      firebase_cli_token: firebase_token,
+      apk_path: File.join(android_dir, "app/build/outputs/apk/release/app-release.apk")
     )
   end
 
@@ -41,7 +96,7 @@ platform :android do
       task: "assemble",
       build_type: "Release",
       properties: {
-        "android.injected.signing.store.file" => File.join(android_dir, "app/pocketpal-release-key.keystore"),
+        "android.injected.signing.store.file" => File.join(android_dir, "app/sikia-release-key.keystore"),
         "android.injected.signing.store.password" => ENV["KEYSTORE_PASSWORD"],
         "android.injected.signing.key.alias" => ENV["KEY_ALIAS"],
         "android.injected.signing.key.password" => ENV["KEY_PASSWORD"]
@@ -53,7 +108,7 @@ platform :android do
       task: "bundle",
       build_type: "Release",
       properties: {
-        "android.injected.signing.store.file" => File.join(android_dir, "app/pocketpal-release-key.keystore"),
+        "android.injected.signing.store.file" => File.join(android_dir, "app/sikia-release-key.keystore"),
         "android.injected.signing.store.password" => ENV["KEYSTORE_PASSWORD"],
         "android.injected.signing.key.alias" => ENV["KEY_ALIAS"],
         "android.injected.signing.key.password" => ENV["KEY_PASSWORD"]
@@ -62,7 +117,7 @@ platform :android do
 
     upload_to_play_store(
       track: "alpha",
-      package_name: "com.pocketpalai",
+      package_name: "com.sikia.sikiaMobile",
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true,
