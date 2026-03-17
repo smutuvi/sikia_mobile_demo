@@ -104,7 +104,7 @@ export const InterviewScreen: React.FC = observer(() => {
       uiStore.setChatWarning({
         type: 'error',
         message:
-          'No interview LLM is loaded. Open Models → Chat, download a model (e.g. Ndizi interview preset), and set it active before submitting for follow-ups.',
+          'LLM not available. Open Models → Chat, download a model, then set it active to enable follow-up questions.',
       });
       return;
     }
@@ -112,7 +112,7 @@ export const InterviewScreen: React.FC = observer(() => {
       uiStore.setChatWarning({
         type: 'info',
         message:
-          'Interview LLM is still loading. The first follow-up may take a few seconds; please wait, then submit again.',
+          'LLM is still loading. Please wait a few seconds, then submit again.',
       });
       return;
     }
