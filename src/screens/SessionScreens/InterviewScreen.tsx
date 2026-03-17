@@ -94,15 +94,30 @@ export const InterviewScreen: React.FC = observer(() => {
     const updatedTurnCount = turnsForQuestion.length;
     const canAddMoreNow = updatedTurnCount < maxTurns;
 
+    // If we've hit the max turns, stop auto-advancing. Enumerator must
+    // explicitly tap "Complete" to move to the next question/review.
     if (!canAddMoreNow) {
-      handleComplete();
       return;
     }
     // Use on-device model only (no online LLMs); use Session low-latency preset
-    const localCompletion = modelStore.context
-      ? (sys: string, user: string) =>
-          modelStore.runTextCompletion(sys, user, { forSessionFollowUp: true })
-      : undefined;
+    if (!modelStore.context) {
+      uiStore.setChatWarning({
+        type: 'error',
+        message:
+          'No interview LLM is loaded. Open Models → Chat, download a model (e.g. Ndizi interview preset), and set it active before submitting for follow-ups.',
+      });
+      return;
+    }
+    if (modelStore.isContextLoading) {
+      uiStore.setChatWarning({
+        type: 'info',
+        message:
+          'Interview LLM is still loading. The first follow-up may take a few seconds; please wait, then submit again.',
+      });
+      return;
+    }
+    const localCompletion = (sys: string, user: string) =>
+      modelStore.runTextCompletion(sys, user, {forSessionFollowUp: true});
     const followUp = await sessionStore.requestFollowUp(
       sessionId,
       questionId,
@@ -115,8 +130,6 @@ export const InterviewScreen: React.FC = observer(() => {
     );
     if (followUp) {
       setPendingFollowUp(followUp);
-    } else {
-      handleComplete();
     }
   }, [
     answerText,
@@ -132,6 +145,25 @@ export const InterviewScreen: React.FC = observer(() => {
   ]);
 
   const handleMicPress = useCallback(() => {
+    // Guard: for offline STT we need a downloaded + loaded ASR model
+    if (effectiveSttMode === 'offline') {
+      if (!hasOfflineAsrModel) {
+        uiStore.setChatWarning({
+          type: 'error',
+          message:
+            'No ASR model downloaded. Open Models → ASR, download a model, and set it active before using voice input.',
+        });
+        return;
+      }
+  	    if (!whisperReady) {
+  	      // Show a hint but still allow the first mic press to trigger lazy load.
+  	      uiStore.setChatWarning({
+  	        type: 'info',
+  	        message:
+  	          'Loading the ASR model… The first voice input may take a few seconds.',
+  	      });
+  	    }
+    }
     if (isRecording || isTranscribing) {
       stopVoice();
     } else {
@@ -139,7 +171,16 @@ export const InterviewScreen: React.FC = observer(() => {
       setAnswerText('');
       startVoice();
     }
-  }, [isRecording, isTranscribing, startVoice, stopVoice, setAnswerText]);
+  }, [
+    isRecording,
+    isTranscribing,
+    startVoice,
+    stopVoice,
+    setAnswerText,
+    effectiveSttMode,
+    hasOfflineAsrModel,
+    whisperReady,
+  ]);
 
   const handleComplete = useCallback(() => {
     // When opened from FormFill: write transcript back and go back to form.
