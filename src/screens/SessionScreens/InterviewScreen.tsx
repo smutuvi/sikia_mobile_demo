@@ -17,10 +17,12 @@ import {isOnlineSttConfigured} from '../../services/onlineSttService';
 import {warmUpAsrModel, isWhisperLoaded} from '../../services/whisperVoiceService';
 import type {AnswerCaptureMethod} from '../../types/session';
 import type {SessionStackParamList} from './SessionNavigator';
+import {L10nContext, safeAlert} from '../../utils';
 
 export const InterviewScreen: React.FC = observer(() => {
   const theme = useTheme();
   const styles = createStyles(theme);
+  const l10n = React.useContext(L10nContext);
   const route = useRoute<RouteProp<SessionStackParamList, 'Interview'>>();
   const navigation = useNavigation<StackNavigationProp<SessionStackParamList, 'Interview'>>();
   const {sessionId, questionId, formId, targetFieldId} = route.params;
@@ -36,6 +38,13 @@ export const InterviewScreen: React.FC = observer(() => {
   const [answerText, setAnswerText] = useState('');
   const [pendingFollowUp, setPendingFollowUp] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  // True only when the LLM explicitly returned "no follow-up" (type === 'none').
+  // Stays false when the LLM is simply not loaded — in that case the input panel
+  // must remain visible so the enumerator can keep recording answers manually.
+  const [followUpExhausted, setFollowUpExhausted] = useState(false);
+  // Tracks whether the enumerator has tapped Submit at least once. We only show
+  // detailed LLM guidance after the first attempt to generate a follow-up.
+  const [hasTriedFollowUp, setHasTriedFollowUp] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const onVoiceResult = useCallback((text: string) => {
@@ -80,12 +89,53 @@ export const InterviewScreen: React.FC = observer(() => {
     }
   }, [effectiveSttMode, hasOfflineAsrModel]);
 
+  // Prevent auto-release from clearing the LLM context while an interview
+  // is active. Without this, backgrounding the app (e.g. a phone call) would
+  // silently release the context; the model card would still show as "loaded"
+  // (activeModelId is kept on auto-release) but context would be null, causing
+  // the "LLM not available" error on the next Submit.
+  useEffect(() => {
+    modelStore.disableAutoRelease('interview-screen');
+    return () => {
+      modelStore.enableAutoRelease('interview-screen');
+    };
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     const text = answerText.trim();
-    if (!text || !question || !currentQuestionText) return;
+    if (!text || !question) return;
+    // From the user's perspective, this is the moment they have requested a
+    // follow-up. Any guidance about missing/offloaded models should appear
+    // after this point.
+    setHasTriedFollowUp(true);
+
+    // Before we persist anything to the session thread, verify that an on-device
+    // LLM context is actually available. If not, block and surface a clear
+    // \"model not loaded\" message.
+    // Check loading first: when a model is initialising, context is null AND
+    // isContextLoading is true — we must show the \"wait\" hint, not the \"not
+    // available\" error.
+    if (modelStore.isContextLoading) {
+      uiStore.setChatWarning({
+        type: 'info',
+        message:
+          'LLM is still loading. Please wait a few seconds, then submit again.',
+      });
+      return;
+    }
+    if (!modelStore.context) {
+      // Mirror the behaviour of chat/video screens: show a clear, blocking
+      // alert when the user expects model-powered behaviour but no model
+      // is actually loaded.
+      safeAlert(l10n.chat.modelNotLoaded, l10n.chat.pleaseLoadModel);
+      return;
+    }
+
+    // At this point we know an LLM context is ready; now persist the turn and
+    // (if allowed) request a follow-up.
     const method: AnswerCaptureMethod =
       effectiveSttMode === 'online' || isRecording ? 'speech' : 'typing';
-    sessionStore.addTurn(sessionId, questionId, currentQuestionText, text, method);
+    sessionStore.addTurn(sessionId, questionId, currentQuestionText ?? '', text, method);
     setAnswerText('');
     resetVoice();
     setPendingFollowUp(null);
@@ -95,41 +145,33 @@ export const InterviewScreen: React.FC = observer(() => {
     const canAddMoreNow = updatedTurnCount < maxTurns;
 
     // If we've hit the max turns, stop auto-advancing. Enumerator must
-    // explicitly tap "Complete" to move to the next question/review.
+    // explicitly tap \"Complete\" to move to the next question/review.
     if (!canAddMoreNow) {
-      return;
-    }
-    // Use on-device model only (no online LLMs); use Session low-latency preset
-    if (!modelStore.context) {
-      uiStore.setChatWarning({
-        type: 'error',
-        message:
-          'LLM not available. Open Models → Chat, download a model, then set it active to enable follow-up questions.',
-      });
-      return;
-    }
-    if (modelStore.isContextLoading) {
-      uiStore.setChatWarning({
-        type: 'info',
-        message:
-          'LLM is still loading. Please wait a few seconds, then submit again.',
-      });
       return;
     }
     const localCompletion = (sys: string, user: string) =>
       modelStore.runTextCompletion(sys, user, {forSessionFollowUp: true});
-    const followUp = await sessionStore.requestFollowUp(
-      sessionId,
-      questionId,
-      currentQuestionText,
-      question.targetOutcome,
-      question.probeBank,
-      text,
-      localCompletion,
-      asrLanguageName,
-    );
-    if (followUp) {
-      setPendingFollowUp(followUp);
+    try {
+      const followUp = await sessionStore.requestFollowUp(
+        sessionId,
+        questionId,
+        currentQuestionText,
+        question.targetOutcome,
+        question.probeBank,
+        text,
+        localCompletion,
+        asrLanguageName,
+      );
+      if (followUp) {
+        setPendingFollowUp(followUp);
+      } else {
+        // LLM responded but determined no further probing is needed.
+        // Mark exhausted so the "No more follow-ups" panel is shown.
+        setFollowUpExhausted(true);
+      }
+    } catch (_err) {
+      // Generation error — leave the input panel visible so the enumerator
+      // can continue the interview manually or try again.
     }
   }, [
     answerText,
@@ -141,18 +183,18 @@ export const InterviewScreen: React.FC = observer(() => {
     isRecording,
     resetVoice,
     maxTurns,
-    handleComplete,
   ]);
 
   const handleMicPress = useCallback(() => {
     // Guard: for offline STT we need a downloaded + loaded ASR model
     if (effectiveSttMode === 'offline') {
       if (!hasOfflineAsrModel) {
-        uiStore.setChatWarning({
-          type: 'error',
-          message:
-            'No ASR model downloaded. Open Models → ASR, download a model, and set it active before using voice input.',
-        });
+        // Mirror LLM behaviour: when the user explicitly tries to use voice
+        // input but no ASR model is active, show a clear blocking alert.
+        safeAlert(
+          'ASR model not loaded',
+          'No ASR model is loaded. Open Models → ASR, download a model, and set it active before using voice input.',
+        );
         return;
       }
   	    if (!whisperReady) {
@@ -342,7 +384,12 @@ export const InterviewScreen: React.FC = observer(() => {
                 This may take a few seconds. Using your device model.
               </Text>
             </View>
-          ) : currentQuestionText ? (
+          ) : currentQuestionText !== null || (!followUpExhausted && turnCount < maxTurns) ? (
+            // Input panel.
+            // Shown when:
+            //   • There is a question/follow-up to display (currentQuestionText !== null), OR
+            //   • The LLM hasn't said "stop" yet and turns remain — this keeps the panel
+            //     visible even when no LLM is loaded so the enumerator can keep recording.
             <View
               style={{
                 padding: 12,
@@ -390,12 +437,31 @@ export const InterviewScreen: React.FC = observer(() => {
               {voiceError ? (
                 <Text variant="bodySmall" style={styles.error}>{voiceError}</Text>
               ) : null}
-              {!modelStore.context ? (
-                <Text
-                  variant="bodySmall"
-                  style={{color: theme.colors.outline, marginTop: 8}}>
-                  Load a model in Models to get follow-up suggestions.
-                </Text>
+              {!modelStore.context && hasTriedFollowUp ? (
+                <>
+                  {modelStore.availableModels.length === 0 ? (
+                    <Text
+                      variant="bodySmall"
+                      style={{color: theme.colors.outline, marginTop: 8}}>
+                      No LLM models downloaded. Open Models → LLM and download a model
+                      to enable follow-up questions.
+                    </Text>
+                  ) : !modelStore.activeModel ? (
+                    <Text
+                      variant="bodySmall"
+                      style={{color: theme.colors.outline, marginTop: 8}}>
+                      No active LLM. Open Models → LLM and tap “Load” on a downloaded
+                      model to enable follow-up questions.
+                    </Text>
+                  ) : (
+                    <Text
+                      variant="bodySmall"
+                      style={{color: theme.colors.outline, marginTop: 8}}>
+                      The active LLM has been offloaded from memory. Open Models → LLM
+                      and tap “Load” again to re-enable follow-up questions.
+                    </Text>
+                  )}
+                </>
               ) : null}
             </View>
           ) : (
