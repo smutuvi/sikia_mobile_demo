@@ -72,6 +72,9 @@ export interface FormItem {
   version?: string;
   title: string;
   structure: FormStructure;
+  /** Optional: config for agent-guided interviews */
+  interview_mode?: 'interview' | 'standard';
+  interview_config?: InterviewConfig;
 }
 
 export interface ProjectFormsResponse {
@@ -79,5 +82,26 @@ export interface ProjectFormsResponse {
   forms: FormItem[];
   labels: Record<string, unknown>;
   assessments: unknown[];
+}
+
+/** Per-widget interview behaviour configuration (from backend JSON). */
+export interface WidgetInterviewConfig {
+  allow_extended_capture?: boolean;
+  dynamic_prompt_goal?: string | null;
+  dynamic_prompt_instructions?: string | null;
+  max_follow_ups?: number | null;
+  conversation_tone?: string | null;
+  ai_notes?: string | null;
+  auto_fill_source?: string | null;
+  auto_fill_instructions?: string | null;
+}
+
+/** Form-level interview configuration (from backend JSON). */
+export interface InterviewConfig {
+  language?: string;
+  language_instructions?: string;
+  global_instructions?: string;
+  /** Map of widgetId -> per-widget interview config */
+  widget_configs?: Record<string, WidgetInterviewConfig>;
 }
 

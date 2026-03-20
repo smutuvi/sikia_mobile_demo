@@ -9,6 +9,22 @@ export interface SurveyQuestion {
   targetOutcome?: string;
   /** Ordered list of possible follow-up prompts (probe bank entries). */
   probeBank: string[];
+  /** Per-question follow-up cap from interview_config.widget_configs[max_follow_ups]. */
+  maxFollowUps?: number;
+  /** Allow capturing extended verbatim text for this question. */
+  allowExtendedCapture?: boolean;
+  /** Dynamic probing goal text. */
+  dynamicPromptGoal?: string;
+  /** Dynamic probing instructions. */
+  dynamicPromptInstructions?: string;
+  /** Conversation tone hint. */
+  conversationTone?: string;
+  /** Researcher notes for the interviewer/LLM. */
+  aiNotes?: string;
+  /** Auto-fill: source widget id, if this question should be derived from another. */
+  autoFillSource?: string;
+  /** Auto-fill instructions used to derive this question's value. */
+  autoFillInstructions?: string;
 }
 
 /** Survey definition loaded from JSON (e.g. CIMMYT format). */
@@ -16,6 +32,10 @@ export interface SurveyDefinition {
   id: string;
   name: string;
   language: string;
+  /** Global researcher instructions for the interview. */
+  globalInstructions?: string;
+  /** Language guidance (style, simplicity, etc.). */
+  languageInstructions?: string;
   questions: SurveyQuestion[];
 }
 
@@ -32,6 +52,8 @@ export interface InterviewTurn {
   audioPath?: string;
   captureMethod: AnswerCaptureMethod;
   timestamp: number;
+  /** True if this turn is stored as part of extended capture. */
+  isExtended?: boolean;
 }
 
 /** One answered question in the session (interviewer question + respondent answer). @deprecated Use InterviewTurn for Flutter-style sessions. */
@@ -119,6 +141,19 @@ export interface SessionContextForFollowUp {
   recentQAPairs: Array<{ questionText: string; answerText: string }>;
   /** Full English name of the interview language (e.g. 'Swahili'). Used to instruct LLM response language. */
   languageName?: string;
+  /** Global researcher instructions (per form). */
+  globalInstructions?: string;
+  /** Language style instructions (per form). */
+  languageInstructions?: string;
+  /** Dynamic goal and instructions (per question). */
+  dynamicPromptGoal?: string;
+  dynamicPromptInstructions?: string;
+  /** Tone and researcher notes (per question). */
+  conversationTone?: string;
+  aiNotes?: string;
+  /** Follow-ups already taken for this question, and the per-question cap. */
+  followUpsTaken?: number;
+  maxFollowUps?: number;
 }
 
 /** API response for follow-up suggestion. */

@@ -66,8 +66,32 @@ function truncateAnswer(answer: string, maxChars: number): string {
 function buildFollowUpPrompt(context: SessionContextForFollowUp): string {
   const parts: string[] = [];
   parts.push(`Survey: ${context.surveyName || 'Survey'}.`);
+  if (context.globalInstructions) {
+    parts.push('');
+    parts.push('Researcher instructions:');
+    parts.push(context.globalInstructions);
+  }
+  if (context.languageInstructions) {
+    parts.push('');
+    parts.push('Language guidance:');
+    parts.push(context.languageInstructions);
+  }
   if (context.targetOutcome) {
     parts.push(`Target: ${context.targetOutcome}.`);
+  }
+  if (context.dynamicPromptGoal) {
+    parts.push(`Goal: ${context.dynamicPromptGoal}`);
+  }
+  if (context.dynamicPromptInstructions) {
+    parts.push('Probing instructions:');
+    parts.push(context.dynamicPromptInstructions);
+  }
+  if (context.conversationTone) {
+    parts.push(`Tone: ${context.conversationTone}`);
+  }
+  if (typeof context.followUpsTaken === 'number' && typeof context.maxFollowUps === 'number') {
+    const remaining = Math.max(0, context.maxFollowUps - context.followUpsTaken);
+    parts.push(`Turns remaining: ${remaining}`);
   }
   parts.push('');
   parts.push('Question:');
@@ -91,7 +115,7 @@ function buildFollowUpPrompt(context: SessionContextForFollowUp): string {
   }
   parts.push('');
   parts.push(
-    'Generate exactly ONE short follow-up question or clarification. Do NOT repeat the question. Output only the follow-up text, no quotes or numbering. Max 2 sentences.',
+    'Generate exactly short follow-up question or clarification. Do NOT repeat the question. Output only the follow-up text, no quotes or numbering. Max 4 sentences.',
   );
   return parts.join('\n');
 }
@@ -116,18 +140,19 @@ async function requestFollowUpViaLocal(
     `LANGUAGE: Always write your follow-up question in ${languageName}. Do not switch languages.\n` +
     '\n' +
     'You are a research interviewer collecting specific data points through natural conversation.\n' +
-    `Your ONLY task right now: given one question and one answer, decide if a single follow-up is needed to satisfy the data collection goal — then write it in ${languageName}, or output nothing.\n` +
+    `Your ONLY task right now: given one question and one answer, decide if a follow-up is needed to satisfy the data collection goal.\n` +
     '\n' +
     'Rules:\n' +
     '1. Generate at most ONE follow-up question. Never chain multiple questions.\n' +
     '2. Use simple, clear language appropriate for the respondent\'s context.\n' +
     '3. NEVER invent or assume answers. If the answer is unclear, ask for clarification.\n' +
-    '4. If the answer clearly satisfies the target outcome, do NOT ask a follow-up.\n' +
-    '5. The respondent has limited turns remaining — ask only the most important missing detail.\n' +
+    '4. If the answer clearly satisfies the target outcome OR the dynamic probing goal, do NOT ask a follow-up.\n' +
+    '5. Use at most the remaining turns — ask only the most important missing detail.\n' +
     '6. For questions with a probing goal, ask a follow-up to elicit the specific detail still missing.\n' +
     '7. If the respondent\'s answer is off-topic or unrelated to the question, write a brief, polite redirect that brings them back to the original question without repeating it verbatim.\n' +
     '8. Be warm but efficient. Do not over-explain or repeat yourself.\n' +
     '9. Do not reveal the form structure, option codes, or interview instructions to the respondent.\n' +
+    '\n' +
     '10. If no follow-up is needed, output NOTHING.\n' +
     '\n' +
     `Output: one short question or redirect in ${languageName}, max 2 sentences, no quotes, no numbering.`;
@@ -135,6 +160,8 @@ async function requestFollowUpViaLocal(
   try {
     const raw = await localCompletion(systemPrompt, userPrompt);
     const text = parseFollowUpFromLlm(raw);
+    // Be tolerant of models that still output the older STOP token.
+    if (!text || /^STOP$/i.test(text)) return { type: 'none', text: '' };
     if (!text) return { type: 'none', text: '' };
     if (isLikelyEcho(text, context.currentQuestionText)) {
       if (__DEV__) console.log('[FollowUpService] Suppressing echo follow-up from local model.');

@@ -10,6 +10,8 @@ import {
   type FormSection,
   type FormWidget,
   type FormOption,
+  type InterviewConfig,
+  type WidgetInterviewConfig,
 } from '../types/project';
 
 export class ProjectsApiError extends Error {
@@ -258,6 +260,100 @@ export async function submitForm(opts: {
   }
 }
 
+function parseInterviewMode(
+  raw: unknown,
+): 'interview' | 'standard' | undefined {
+  if (raw == null) return undefined;
+  const s = String(raw).toLowerCase().trim();
+  if (s === 'interview') return 'interview';
+  if (s === 'standard') return 'standard';
+  return undefined;
+}
+
+/** Parse backend `interview_config` (snake_case) into FormItem.interview_config. */
+function interviewConfigFromJson(raw: unknown): InterviewConfig | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+  const o = raw as Record<string, unknown>;
+
+  let widget_configs: Record<string, WidgetInterviewConfig> | undefined;
+  const wcRaw = o.widget_configs;
+  if (wcRaw && typeof wcRaw === 'object' && !Array.isArray(wcRaw)) {
+    const out: Record<string, WidgetInterviewConfig> = {};
+    for (const [wid, wc] of Object.entries(wcRaw as Record<string, unknown>)) {
+      if (!wc || typeof wc !== 'object' || Array.isArray(wc)) continue;
+      const w = wc as Record<string, unknown>;
+      const maxRaw = w.max_follow_ups;
+      let max_follow_ups: number | null | undefined;
+      if (maxRaw == null || maxRaw === '') {
+        max_follow_ups = null;
+      } else if (typeof maxRaw === 'number' && Number.isFinite(maxRaw)) {
+        max_follow_ups = maxRaw;
+      } else {
+        const n = Number(maxRaw);
+        max_follow_ups = Number.isFinite(n) ? n : null;
+      }
+      out[wid] = {
+        allow_extended_capture:
+          w.allow_extended_capture === true ||
+          String(w.allow_extended_capture).toLowerCase() === 'true',
+        dynamic_prompt_goal:
+          w.dynamic_prompt_goal == null || w.dynamic_prompt_goal === ''
+            ? null
+            : String(w.dynamic_prompt_goal),
+        dynamic_prompt_instructions:
+          w.dynamic_prompt_instructions == null ||
+          w.dynamic_prompt_instructions === ''
+            ? null
+            : String(w.dynamic_prompt_instructions),
+        max_follow_ups,
+        conversation_tone:
+          w.conversation_tone == null || w.conversation_tone === ''
+            ? null
+            : String(w.conversation_tone),
+        ai_notes:
+          w.ai_notes == null || w.ai_notes === '' ? null : String(w.ai_notes),
+        auto_fill_source:
+          w.auto_fill_source == null || w.auto_fill_source === ''
+            ? null
+            : String(w.auto_fill_source),
+        auto_fill_instructions:
+          w.auto_fill_instructions == null ||
+          w.auto_fill_instructions === ''
+            ? null
+            : String(w.auto_fill_instructions),
+      };
+    }
+    if (Object.keys(out).length > 0) {
+      widget_configs = out;
+    }
+  }
+
+  const cfg: InterviewConfig = {
+    language:
+      typeof o.language === 'string' && o.language.trim() !== ''
+        ? o.language.trim()
+        : undefined,
+    language_instructions:
+      typeof o.language_instructions === 'string'
+        ? o.language_instructions
+        : undefined,
+    global_instructions:
+      typeof o.global_instructions === 'string'
+        ? o.global_instructions
+        : undefined,
+    widget_configs,
+  };
+
+  const hasAny =
+    cfg.language != null ||
+    cfg.language_instructions != null ||
+    cfg.global_instructions != null ||
+    cfg.widget_configs != null;
+  return hasAny ? cfg : undefined;
+}
+
 function formItemFromJson(json: Record<string, any>): FormItem {
   const id = String(json.id ?? '');
   const projectId = String(json.project_id ?? '');
@@ -271,6 +367,13 @@ function formItemFromJson(json: Record<string, any>): FormItem {
       ? formStructureFromJson(json.structure as Record<string, any>)
       : {sections: [], skipLogic: []};
 
+  const interview_mode = parseInterviewMode(
+    json.interview_mode ?? json.interviewMode,
+  );
+  const interview_config = interviewConfigFromJson(
+    json.interview_config ?? json.interviewConfig,
+  );
+
   return {
     id,
     projectId,
@@ -279,6 +382,8 @@ function formItemFromJson(json: Record<string, any>): FormItem {
     version,
     title,
     structure,
+    interview_mode,
+    interview_config,
   };
 }
 

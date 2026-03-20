@@ -32,7 +32,10 @@ export const InterviewScreen: React.FC = observer(() => {
   const question = survey?.questions.find(q => q.questionId === questionId);
   const turns = sessionStore.getTurnsForQuestion(sessionId, questionId);
   const turnCount = turns.length;
-  const maxTurns = sessionStore.maxTurnsPerQuestion;
+  const maxTurns =
+    (question?.maxFollowUps != null && Number.isFinite(question.maxFollowUps)
+      ? Math.max(1, Math.floor(question.maxFollowUps as number))
+      : undefined) ?? sessionStore.maxTurnsPerQuestion;
   const hasOfflineAsrModel = Boolean(asrModelStore.activeModel?.isDownloaded);
 
   const [answerText, setAnswerText] = useState('');
@@ -73,7 +76,8 @@ export const InterviewScreen: React.FC = observer(() => {
   }, [session]);
 
   const currentQuestionText =
-    pendingFollowUp ?? (turnCount === 0 ? question?.mainQuestion ?? '' : null);
+    pendingFollowUp ??
+    (turnCount === 0 ? question?.mainQuestion ?? '' : null);
   const isRequestingFollowUp = sessionStore.isRequestingFollowUp;
   const onlineConfigured = isOnlineSttConfigured();
   const effectiveSttMode: SttMode =
@@ -144,13 +148,15 @@ export const InterviewScreen: React.FC = observer(() => {
     const updatedTurnCount = turnsForQuestion.length;
     const canAddMoreNow = updatedTurnCount < maxTurns;
 
-    // If we've hit the max turns, stop auto-advancing. Enumerator must
-    // explicitly tap \"Complete\" to move to the next question/review.
-    if (!canAddMoreNow) {
-      return;
-    }
     const localCompletion = (sys: string, user: string) =>
       modelStore.runTextCompletion(sys, user, {forSessionFollowUp: true});
+
+    // If we've hit the max turns, stop auto-advancing.
+    // Let enumerator decide how to proceed via Complete.
+    if (!canAddMoreNow) {
+      setFollowUpExhausted(true);
+      return;
+    }
     try {
       const followUp = await sessionStore.requestFollowUp(
         sessionId,
@@ -163,6 +169,7 @@ export const InterviewScreen: React.FC = observer(() => {
         asrLanguageName,
       );
       if (followUp) {
+        setFollowUpExhausted(false);
         setPendingFollowUp(followUp);
       } else {
         // LLM responded but determined no further probing is needed.
@@ -319,6 +326,15 @@ export const InterviewScreen: React.FC = observer(() => {
                 </Text>
               </View>
             )}
+            {turnCount === 0 ? (
+              <View style={[styles.bubbleLeft, {backgroundColor: theme.colors.surfaceContainerHigh}]}>
+                <Text variant="bodyMedium" style={{color: theme.colors.onSurface}}>
+                  {session?.respondentName
+                    ? `Welcome, ${session.respondentName}!`
+                    : 'Welcome!'}
+                </Text>
+              </View>
+            ) : null}
             {turns.map(t => (
               <View key={t.turnId} style={{marginBottom: 8}}>
                 <View style={[styles.bubbleLeft, {backgroundColor: theme.colors.surfaceContainerHigh}]}>

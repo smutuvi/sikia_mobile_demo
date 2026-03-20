@@ -17,7 +17,7 @@ import {
 } from '../services/followUpService';
 
 const RECENT_QA_PAIRS = 3;
-const MAX_TURNS_PER_QUESTION = 4;
+const DEFAULT_MAX_TURNS_PER_QUESTION = 4;
 const STORAGE_KEY = 'SessionStore_sessions_v1';
 
 /** Flutter-style session store: list of sessions, turns per question, LLM follow-up. */
@@ -155,7 +155,15 @@ class SessionStore {
     const session = this.getSession(sessionId);
     if (!session) return;
     const turnNumber = this.getNextTurnNumber(sessionId, questionId);
-    if (turnNumber > MAX_TURNS_PER_QUESTION) {
+    // Per-question cap from current survey when available
+    let maxTurns = DEFAULT_MAX_TURNS_PER_QUESTION;
+    const q = this.currentSurvey?.questions.find(q => q.questionId === questionId);
+    if (q?.maxFollowUps != null && Number.isFinite(q.maxFollowUps)) {
+      const n = Math.max(1, Math.floor(q.maxFollowUps as number));
+      // Follow-ups count translates to total turns limit (we ask at least one)
+      maxTurns = Math.max(1, n);
+    }
+    if (turnNumber > maxTurns) {
       return;
     }
     const turn: InterviewTurn = {
@@ -212,6 +220,13 @@ class SessionStore {
       .slice(-RECENT_QA_PAIRS)
       .map(t => ({ questionText: t.questionText, answerText: t.answerText }));
     const session = this.getSession(sessionId);
+    const survey = this.currentSurvey;
+    const q = survey?.questions.find(q => q.questionId === questionId);
+    const followUpsTaken = Math.max(0, turns.length);
+    const maxFollowUps =
+      q?.maxFollowUps != null && Number.isFinite(q.maxFollowUps)
+        ? Math.max(1, Math.floor(q.maxFollowUps as number))
+        : undefined;
     return {
       surveyName: session?.surveyName ?? '',
       currentQuestionId: questionId,
@@ -221,6 +236,14 @@ class SessionStore {
       respondentAnswer,
       recentQAPairs,
       languageName: languageName || 'English',
+      globalInstructions: survey?.globalInstructions,
+      languageInstructions: survey?.languageInstructions,
+      dynamicPromptGoal: q?.dynamicPromptGoal,
+      dynamicPromptInstructions: q?.dynamicPromptInstructions,
+      conversationTone: q?.conversationTone,
+      aiNotes: q?.aiNotes,
+      followUpsTaken,
+      maxFollowUps,
     };
   }
 
@@ -261,7 +284,7 @@ class SessionStore {
   }
 
   get maxTurnsPerQuestion(): number {
-    return MAX_TURNS_PER_QUESTION;
+    return DEFAULT_MAX_TURNS_PER_QUESTION;
   }
 }
 

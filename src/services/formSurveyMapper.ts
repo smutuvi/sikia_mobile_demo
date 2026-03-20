@@ -1,10 +1,11 @@
-import type {FormItem} from '../types/project';
+import type {FormItem, InterviewConfig, WidgetInterviewConfig} from '../types/project';
 import type {SurveyDefinition, SurveyQuestion} from '../types/session';
 import {isVoiceWidget, isGenericQuestionLabel} from '../utils/formWidgetUtils';
 
 export function formItemToSurveyDefinition(form: FormItem): SurveyDefinition {
   const seen = new Set<string>();
   const questions: SurveyQuestion[] = [];
+  const cfg: InterviewConfig | undefined = (form as any).interview_config;
 
   for (const section of form.structure.sections) {
     for (const widget of section.widgets) {
@@ -16,12 +17,21 @@ export function formItemToSurveyDefinition(form: FormItem): SurveyDefinition {
       if (!main) continue;
 
       seen.add(id);
+      const wcfg: WidgetInterviewConfig | undefined = cfg?.widget_configs?.[id];
       questions.push({
         questionId: id,
         mainQuestion: main,
         targetOutcome: widget.hint,
         // Do not use probe_bank from backend; follow-ups are generated purely from answers.
         probeBank: [],
+        maxFollowUps: wcfg?.max_follow_ups ?? undefined,
+        allowExtendedCapture: wcfg?.allow_extended_capture ?? undefined,
+        dynamicPromptGoal: wcfg?.dynamic_prompt_goal ?? undefined,
+        dynamicPromptInstructions: wcfg?.dynamic_prompt_instructions ?? undefined,
+        conversationTone: wcfg?.conversation_tone ?? undefined,
+        aiNotes: wcfg?.ai_notes ?? undefined,
+        autoFillSource: wcfg?.auto_fill_source ?? undefined,
+        autoFillInstructions: wcfg?.auto_fill_instructions ?? undefined,
       });
     }
   }
@@ -30,7 +40,9 @@ export function formItemToSurveyDefinition(form: FormItem): SurveyDefinition {
     id: form.id,
     name: form.title,
     // Backend forms are currently single-language; default to English.
-    language: 'en',
+    language: cfg?.language || 'en',
+    globalInstructions: cfg?.global_instructions || undefined,
+    languageInstructions: cfg?.language_instructions || undefined,
     questions,
   };
 }
@@ -39,6 +51,7 @@ export function formItemToSurveyDefinition(form: FormItem): SurveyDefinition {
 export function formItemToVoiceSurveyDefinition(form: FormItem): SurveyDefinition {
   const seen = new Set<string>();
   const questions: SurveyQuestion[] = [];
+  const cfg: InterviewConfig | undefined = (form as any).interview_config;
 
   for (const section of form.structure.sections) {
     for (const widget of section.widgets) {
@@ -60,11 +73,20 @@ export function formItemToVoiceSurveyDefinition(form: FormItem): SurveyDefinitio
               : 'Question';
       if (!mainQuestion) continue;
       seen.add(id);
+      const wcfg: WidgetInterviewConfig | undefined = cfg?.widget_configs?.[id];
       questions.push({
         questionId: id,
         mainQuestion,
         targetOutcome: widget.hint,
         probeBank: [],
+        maxFollowUps: wcfg?.max_follow_ups ?? undefined,
+        allowExtendedCapture: wcfg?.allow_extended_capture ?? undefined,
+        dynamicPromptGoal: wcfg?.dynamic_prompt_goal ?? undefined,
+        dynamicPromptInstructions: wcfg?.dynamic_prompt_instructions ?? undefined,
+        conversationTone: wcfg?.conversation_tone ?? undefined,
+        aiNotes: wcfg?.ai_notes ?? undefined,
+        autoFillSource: wcfg?.auto_fill_source ?? undefined,
+        autoFillInstructions: wcfg?.auto_fill_instructions ?? undefined,
       });
     }
   }
@@ -72,7 +94,9 @@ export function formItemToVoiceSurveyDefinition(form: FormItem): SurveyDefinitio
   return {
     id: form.id,
     name: form.title,
-    language: 'en',
+    language: cfg?.language || 'en',
+    globalInstructions: cfg?.global_instructions || undefined,
+    languageInstructions: cfg?.language_instructions || undefined,
     questions,
   };
 }

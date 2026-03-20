@@ -52,6 +52,47 @@ const PRESET_ASR_MODEL_SMALL_Q5: AsrModel = {
   hfUrl: `https://huggingface.co/${NDIZI_WHISPER_SMALL_MODEL_ID}`,
 };
 
+// Whisper large turbo v3 quantized binaries from HF.
+// Public files:
+// - ggml-model-q4_0.bin (≈474 MB)
+// - ggml-model-q5_0.bin (≈574 MB)
+const NDIZI_WHISPER_LARGE_TURBO_V3_MODEL_ID =
+  'smutuvi/ndizi-whisper-large-turbo-v3-GGUF';
+const NDIZI_WHISPER_LARGE_TURBO_V3_REPO =
+  'ndizi-whisper-large-turbo-v3-GGUF';
+
+const NDIZI_WHISPER_LARGE_TURBO_V3_Q4_FILE = 'ggml-model-q4_0.bin';
+const NDIZI_WHISPER_LARGE_TURBO_V3_Q4_SIZE = 497_025_024; // 474 MiB
+const PRESET_ASR_MODEL_LARGE_TURBO_V3_Q4: AsrModel = {
+  id: `${NDIZI_WHISPER_LARGE_TURBO_V3_MODEL_ID}/${NDIZI_WHISPER_LARGE_TURBO_V3_Q4_FILE}`,
+  name: 'Whisper large turbo v3 (q4_0)',
+  author: 'smutuvi',
+  repo: NDIZI_WHISPER_LARGE_TURBO_V3_REPO,
+  filename: NDIZI_WHISPER_LARGE_TURBO_V3_Q4_FILE,
+  size: NDIZI_WHISPER_LARGE_TURBO_V3_Q4_SIZE,
+  isDownloaded: false,
+  progress: 0,
+  origin: AsrModelOrigin.HF,
+  downloadUrl: `https://huggingface.co/${NDIZI_WHISPER_LARGE_TURBO_V3_MODEL_ID}/resolve/main/${NDIZI_WHISPER_LARGE_TURBO_V3_Q4_FILE}`,
+  hfUrl: `https://huggingface.co/${NDIZI_WHISPER_LARGE_TURBO_V3_MODEL_ID}`,
+};
+
+const NDIZI_WHISPER_LARGE_TURBO_V3_Q5_FILE = 'ggml-model-q5_0.bin';
+const NDIZI_WHISPER_LARGE_TURBO_V3_Q5_SIZE = 601_882_624; // 574 MiB
+const PRESET_ASR_MODEL_LARGE_TURBO_V3_Q5: AsrModel = {
+  id: `${NDIZI_WHISPER_LARGE_TURBO_V3_MODEL_ID}/${NDIZI_WHISPER_LARGE_TURBO_V3_Q5_FILE}`,
+  name: 'Whisper large turbo v3 (q5_0)',
+  author: 'smutuvi',
+  repo: NDIZI_WHISPER_LARGE_TURBO_V3_REPO,
+  filename: NDIZI_WHISPER_LARGE_TURBO_V3_Q5_FILE,
+  size: NDIZI_WHISPER_LARGE_TURBO_V3_Q5_SIZE,
+  isDownloaded: false,
+  progress: 0,
+  origin: AsrModelOrigin.HF,
+  downloadUrl: `https://huggingface.co/${NDIZI_WHISPER_LARGE_TURBO_V3_MODEL_ID}/resolve/main/${NDIZI_WHISPER_LARGE_TURBO_V3_Q5_FILE}`,
+  hfUrl: `https://huggingface.co/${NDIZI_WHISPER_LARGE_TURBO_V3_MODEL_ID}`,
+};
+
 // Whisper Base.en (English-only, q5_1) from ggerganov/whisper.cpp on Hugging Face
 const GGERGANOV_WHISPER_MODEL_ID = 'ggerganov/whisper.cpp';
 const WHISPER_BASE_EN_Q5_1_FILE = 'ggml-base.en-q5_1.bin';
@@ -91,6 +132,8 @@ const PRESET_ASR_MODEL_BASE_EN_Q8_0: AsrModel = {
 const PRESET_ASR_MODELS = [
   PRESET_ASR_MODEL_SMALL,
   PRESET_ASR_MODEL_SMALL_Q5,
+  PRESET_ASR_MODEL_LARGE_TURBO_V3_Q4,
+  PRESET_ASR_MODEL_LARGE_TURBO_V3_Q5,
   PRESET_ASR_MODEL_BASE_EN_Q5_1,
   PRESET_ASR_MODEL_BASE_EN_Q8_0,
 ];
